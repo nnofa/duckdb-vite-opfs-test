@@ -25,18 +25,24 @@ const MANUAL_BUNDLES = {
   },
 };
 
-const downloadDB = async () => {
-  const response = await fetch("http://localhost:8080/file");
-  const arr = await response.arrayBuffer();
-  return new Uint8Array(arr);
-};
-
 async function streamFileToOPFS(fileName) {
   // Step 1: Get the OPFS root directory
   const opfsRoot = await navigator.storage.getDirectory();
 
-  // Step 2: Create a file in OPFS
-  const fileHandle = await opfsRoot.getFileHandle(fileName, { create: true });
+  // Step 2: Check if the file already exists
+  let fileHandle;
+  try {
+    fileHandle = await opfsRoot.getFileHandle(fileName);
+    console.log(`${fileName} already exists in OPFS. Skipping download.`);
+    return;
+  } catch (e) {
+    if (e.name === "NotFoundError") {
+      // File does not exist, proceed to create and download it
+      fileHandle = await opfsRoot.getFileHandle(fileName, { create: true });
+    } else {
+      throw e;
+    }
+  }
 
   // Step 3: Create a writable stream for the file
   const writableStream = await fileHandle.createWritable();
@@ -59,7 +65,7 @@ const worker = new Worker(bundle.mainWorker);
 const logger = new duckdb.ConsoleLogger();
 const db = new duckdb.AsyncDuckDB(logger, worker);
 await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-const filename = "test.db";
+const filename = "newer.duckdb";
 await streamFileToOPFS(filename);
 await db.open({
   path: "opfs://" + filename,
@@ -70,15 +76,6 @@ const conn = await db.connect(); // Connect to db
 let q = await conn.query(`SELECT * FROM big_table limit 100`); // Returns v = 101
 console.log("Query result (Arrow Table):", q);
 
-// // Prepare query
-// console.log("Prepared query statement");
-// const stmt = await conn.prepare(
-//   `SELECT (v + ?) as v FROM generate_series(0, 1000) as t(v);`
-// );
-
-// // ... and run the query with materialized results
-// const res = await stmt.query(234); // Returns 1001 entries ranging from v = 234 to 1,234
-console.log("Statement result (Table):", res);
 console.log(
   "Statement result copy (JSON):",
   // Bug fix explained at: https://github.com/GoogleChromeLabs/jsbi/issues/30
@@ -91,8 +88,3 @@ console.log(
 );
 
 // Closing everything
-await conn.close();
-await db.terminate();
-await worker.terminate();
-
-console.log("Finished!");

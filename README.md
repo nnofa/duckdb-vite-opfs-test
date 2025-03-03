@@ -1,13 +1,14 @@
 # duckdb-wasm example: vite-browser
 
-![Side-by-side screenshot of browser running the example and the corresponding output in the DevTools window](vite_example.PNG)
-
-Barebones example of querying with duckdb-wasm using Vite and just the browser (no front-end framework). No dataset file is loaded; the data is created using the generate_series function.
+Barebones example of querying with duckdb-wasm using Vite and just the browser (no front-end framework). Dataset is loaded through OPFS.
+For this to work, you'll need to have a duckdb file to be streamed.
 
 ## How to run
+
 1. Install the dependencies using `npm i`
-2. Run the example using `npm run preview`
-3. (Optional) If forking, use `npm run dev` and go from there!
+2. Run `node server.js` to start server. Make sure you have a duckdb file named `smaller.duckdb` to be sent by the server.
+3. If forking, run with `npm run dev` and go from there!
+4. You should be able to see what's happening in console
 
 ## Steps taken
 
@@ -20,6 +21,7 @@ Everything runs from the [main.js](main.js) script which roughly does the follow
 5. Close: The connection, database, and worker.
 
 Notes:
+
 - For ease of use when showing the results, JSON copies of the query results are printed to the console. Consequently...
-    - ...this example is not acquainted with proper usage of the Apache Arrow objects like Table.
-    - Making JSON copies of large query results for console.log may not be advisable
+  - ...this example is not acquainted with proper usage of the Apache Arrow objects like Table.
+  - Making JSON copies of large query results for console.log may not be advisable

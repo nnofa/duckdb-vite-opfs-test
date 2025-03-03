@@ -49,7 +49,11 @@ async function streamFileToOPFS(fileName) {
 
   // Step 4: Fetch the file and stream directly into OPFS
   const response = await fetch("http://localhost:8080/file");
-  if (!response.body) throw new Error("ReadableStream not supported");
+  if (!response.body) {
+    await fileHandle.close();
+    await opfsRoot.removeEntry(fileName);
+    throw new Error("ReadableStream not supported");
+  }
 
   // Stream response body to OPFS
   await response.body.pipeTo(writableStream);
@@ -65,12 +69,18 @@ const worker = new Worker(bundle.mainWorker);
 const logger = new duckdb.ConsoleLogger();
 const db = new duckdb.AsyncDuckDB(logger, worker);
 await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-const filename = "newer.duckdb";
+const filename = "testing.duckdb";
 await streamFileToOPFS(filename);
-await db.open({
-  path: "opfs://" + filename,
-  accessMode: duckdb.DuckDBAccessMode.READ_ONLY,
-});
+try {
+  await db.open({
+    path: "opfs://" + filename,
+    accessMode: duckdb.DuckDBAccessMode.READ_ONLY,
+  });
+} catch (error) {
+  console.log("error", error);
+  const opfsRoot = await navigator.storage.getDirectory();
+  await opfsRoot.removeEntry(filename);
+}
 
 const conn = await db.connect(); // Connect to db
 let q = await conn.query(`SELECT * FROM big_table limit 100`); // Returns v = 101
@@ -87,4 +97,40 @@ console.log(
   )
 );
 
-// Closing everything
+// Cleaning up if needed
+async function deleteAllOPFSFiles() {
+  // Get the root directory
+  const root = await navigator.storage.getDirectory();
+
+  // Iterate over all entries
+  for await (const [name, handle] of root.entries()) {
+    // Check if it's a file or directory
+    const isDirectory = handle.kind === "directory";
+
+    // Recursively delete if it's a directory
+    if (isDirectory) {
+      await deleteDirectory(handle);
+    }
+
+    try {
+      // Remove the entry (file or now-empty directory)
+      await root.removeEntry(name, { recursive: true });
+    } catch (error) {
+      console.error("Error deleting entry: ", name, error);
+    }
+  }
+
+  console.log("All files and folders in OPFS have been deleted.");
+}
+
+async function deleteDirectory(dirHandle) {
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (handle.kind === "directory") {
+      await deleteDirectory(handle);
+    }
+    await dirHandle.removeEntry(name, { recursive: true });
+  }
+}
+
+// Call the function to clear OPFS
+deleteAllOPFSFiles();
